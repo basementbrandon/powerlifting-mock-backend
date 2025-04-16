@@ -1,6 +1,13 @@
+import express from "express";
+import cors from "cors";
 
-const express = require("express");
-const cors = require("cors");
+// Import your scraper modules
+import { scrapeUSAPL } from "./scraper-usapl.js";
+import { scrapePowerliftingAmerica } from "./scraper-powerlifting-america.js";
+import { scrapeWRPF } from "./scraper-wrpf.js";
+import { scrapeRPS } from "./scraper-rps.js";
+import { scrapeUSPA } from "./scraper-uspa.js";
+import { scrapePowerliftingUnited } from "./scraper-powerlifting-united.js";
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -8,50 +15,47 @@ const PORT = process.env.PORT || 3001;
 app.use(cors());
 
 app.get("/api/test", (req, res) => {
-  res.json({ message: "✅ Backend is alive!" });
+  res.json({ message: "✅ All‑federation backend is up!" });
 });
 
-app.get("/api/progress-meets", (req, res) => {
+app.get("/api/progress-meets", async (req, res) => {
   res.setHeader("Content-Type", "text/event-stream");
   res.setHeader("Cache-Control", "no-cache");
   res.setHeader("Connection", "keep-alive");
 
-  const mockData = [
-    {
-      name: "Mock Meet USA",
-      date: new Date(Date.now() + 3 * 86400000).toISOString(),
-      location: "New York, NY",
-      federation: "USAPL",
-      link: "https://example.com/register",
-      logo: "https://usapowerlifting.com/wp-content/uploads/2022/01/USAPL-logo.png"
-    },
-    {
-      name: "Mock Meet West",
-      date: new Date(Date.now() + 10 * 86400000).toISOString(),
-      location: "Los Angeles, CA",
-      federation: "WRPF",
-      link: "https://example.com/register2",
-      logo: "https://wrpffed.com/wp-content/uploads/2021/05/WRPF-black-red.png"
-    }
+  const federations = [
+    { name: "USAPL", fn: scrapeUSAPL },
+    { name: "Powerlifting America", fn: scrapePowerliftingAmerica },
+    { name: "WRPF", fn: scrapeWRPF },
+    { name: "RPS", fn: scrapeRPS },
+    { name: "USPA", fn: scrapeUSPA },
+    { name: "Powerlifting United", fn: scrapePowerliftingUnited },
   ];
 
-  let sent = 0;
-  const sendMock = () => {
-    if (sent < mockData.length) {
-      const percent = Math.round(((sent + 1) / mockData.length) * 100);
-      const federation = mockData[sent].federation;
-      res.write(`data: ${JSON.stringify({ progress: percent, federation })}\n\n`);
-      sent++;
-      setTimeout(sendMock, 500);
-    } else {
-      res.write(`data: ${JSON.stringify({ complete: true, data: mockData })}\n\n`);
-      res.end();
-    }
-  };
+  let completed = 0;
+  const allMeets = [];
 
-  sendMock();
+  for (const { name, fn } of federations) {
+    try {
+      // report progress
+      completed++;
+      const percent = Math.round((completed / federations.length) * 100);
+      res.write(`data: ${JSON.stringify({ progress: percent, federation: name })}\n\n`);
+
+      // scrape
+      const meets = await fn();
+      allMeets.push(...meets);
+    } catch (err) {
+      // on error, report it but keep going
+      res.write(`data: ${JSON.stringify({ error: err.message, federation: name })}\n\n`);
+    }
+  }
+
+  // send final payload
+  res.write(`data: ${JSON.stringify({ complete: true, data: allMeets })}\n\n`);
+  res.end();
 });
 
 app.listen(PORT, () => {
-  console.log(`🚀 Mock backend running on port ${PORT}`);
+  console.log(`🚀 Full‑federations backend running on port ${PORT}`);
 });
